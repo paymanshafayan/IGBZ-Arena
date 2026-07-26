@@ -1,0 +1,28 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+artifacts/
+TestResults/
+[Dd]ebug/
+[Rr]elease/
+.vs/
+
+# Node / frontend (فاز ۲ به بعد)
+node_modules/
+.next/
+dist/
+build/
+.env
+.env.local
+
+# Flutter
+.dart_tool/
+.flutter-plugins*
+**/ios/Pods/
+
+# ابزارها
+.idea/
+*.swp
+.DS_Store
