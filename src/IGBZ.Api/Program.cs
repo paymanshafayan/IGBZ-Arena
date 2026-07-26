@@ -574,6 +574,70 @@ app.MapGet("/api/v1/admin/orders", async (ITenantScopedRepository<Order> orderRe
     }));
 });
 
+app.MapGet("/api/v1/admin/dashboard/stats", async (
+    ITenantScopedRepository<Order> orderRepo,
+    ITenantScopedRepository<Product> productRepo) =>
+{
+    var orders = await orderRepo.ListAsync(take: 500);
+    var products = await productRepo.ListAsync(take: 500);
+
+    var paidOrders = orders.Where(o => o.Status != OrderStatus.Pending && o.Status != OrderStatus.Cancelled).ToList();
+    var totalSales = paidOrders.Sum(o => o.Totals.GrandTotal.Amount);
+
+    var statusCounts = orders.GroupBy(o => o.Status)
+        .ToDictionary(g => g.Key.ToString(), g => g.Count());
+
+    var lowStockProducts = products.SelectMany(p => p.Variants.Select(v => new { p.Name, v.Sku, v.StockOnHand, p.Id, VariantId = v.Id }))
+        .Where(x => x.StockOnHand <= 5)
+        .ToList();
+
+    return Results.Ok(new
+    {
+        totalSales,
+        totalOrdersCount = orders.Count,
+        statusCounts,
+        lowStockAlerts = lowStockProducts.Select(x => new
+        {
+            x.Id,
+            x.VariantId,
+            x.Name,
+            x.Sku,
+            x.StockOnHand
+        })
+    });
+});
+
+app.MapPost("/api/v1/admin/products/{id}/variants/{variantId}/stock", async (
+    string id,
+    string variantId,
+    AdminUpdateStockRequest req,
+    ITenantScopedRepository<Product> productRepo) =>
+{
+    if (req.NewStock < 0)
+    {
+        return Results.BadRequest(new { error = "Stock cannot be negative." });
+    }
+
+    var product = await productRepo.GetByIdAsync(id);
+    if (product is null) return Results.NotFound(new { error = "Product not found." });
+
+    var variant = product.Variants.FirstOrDefault(v => v.Id == variantId);
+    if (variant is null) return Results.NotFound(new { error = "Variant not found." });
+
+    var prop = typeof(ProductVariant).GetProperty(nameof(ProductVariant.StockOnHand));
+    prop?.SetValue(variant, req.NewStock);
+
+    await productRepo.ReplaceAsync(product);
+
+    return Results.Ok(new
+    {
+        message = "Stock updated successfully.",
+        productId = product.Id,
+        variantId = variant.Id,
+        newStock = variant.StockOnHand
+    });
+});
+
 app.MapPost("/api/v1/admin/orders/{id}/ship", async (string id, AdminShipOrderRequest req, ITenantScopedRepository<Order> orderRepo) =>
 {
     var order = await orderRepo.GetByIdAsync(id);
@@ -934,6 +998,8 @@ public record AdminCreateProductRequest(
 
 public record AdminShipOrderRequest(string TrackingCode);
 public record AdminCancelOrderRequest(string Reason);
+
+public record AdminUpdateStockRequest(int NewStock);
 
 public record AdminConnectIntegrationRequest(string ProviderName, IntegrationType Type, string ApiKey, Dictionary<string, string>? Settings);
 public record AdminBookShipmentRequest(string OrderId, decimal WeightKg);
