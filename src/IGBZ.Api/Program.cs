@@ -658,6 +658,29 @@ app.MapPost("/api/v1/admin/orders/{id}/cancel", async (string id, AdminCancelOrd
     return Results.Ok(new { message = "Order cancelled successfully." });
 });
 
+app.MapPost("/api/v1/admin/orders/{id}/pay", async (
+    string id,
+    AdminPayOrderRequest req,
+    ITenantScopedRepository<Order> orderRepo,
+    IBackgroundJobQueue backgroundQueue,
+    ISmsService smsService) =>
+{
+    var order = await orderRepo.GetByIdAsync(id);
+    if (order is null) return Results.NotFound(new { error = "Order not found." });
+
+    order.MarkAsPaid(req.PaymentTransactionId);
+    await orderRepo.ReplaceAsync(order);
+
+    backgroundQueue.Enqueue(() => smsService.SendSmsAsync(order.CustomerId, $"سفارش {order.OrderNumber} شما با موفقیت پرداخت شد و به زودی ارسال می‌شود."));
+
+    return Results.Ok(new
+    {
+        message = "Order payment confirmed, notification enqueued.",
+        orderId = order.Id,
+        status = order.Status.ToString()
+    });
+});
+
 // ---- اندپوینت‌های فاز ۲ - بخش ۲ (Custom Domain Mapping API) ----
 app.MapPost("/api/v1/admin/domains", async (
     AdminRegisterDomainRequest req,
@@ -998,6 +1021,8 @@ public record AdminCreateProductRequest(
 
 public record AdminShipOrderRequest(string TrackingCode);
 public record AdminCancelOrderRequest(string Reason);
+
+public record AdminPayOrderRequest(string PaymentTransactionId);
 
 public record AdminUpdateStockRequest(int NewStock);
 
