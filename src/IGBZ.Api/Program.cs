@@ -47,6 +47,11 @@ builder.Services.AddScoped<ITenantScopedRepository<Product>>(sp => new MongoTena
     sp.GetRequiredService<ITenantContext>(),
     MongoCollections.Products));
 
+builder.Services.AddScoped<ITenantScopedRepository<Category>>(sp => new MongoTenantScopedRepository<Category>(
+    sp.GetRequiredService<IMongoDatabase>(),
+    sp.GetRequiredService<ITenantContext>(),
+    MongoCollections.Categories));
+
 builder.Services.AddScoped<ITenantScopedRepository<Order>>(sp => new MongoTenantScopedRepository<Order>(
     sp.GetRequiredService<IMongoDatabase>(),
     sp.GetRequiredService<ITenantContext>(),
@@ -231,9 +236,13 @@ app.MapGet("/api/v1/platform/onboarding/callback", async (
 });
 
 // ---- اندپوینت‌های فاز ۳ (Storefront API) ----
-app.MapGet("/api/v1/storefront/products", async (ITenantScopedRepository<Product> productRepo) =>
+app.MapGet("/api/v1/storefront/products", async (string? categoryId, ITenantScopedRepository<Product> productRepo) =>
 {
     var products = await productRepo.FindAsync(p => p.IsPublished);
+    if (!string.IsNullOrWhiteSpace(categoryId))
+    {
+        products = products.Where(p => p.CategoryIds.Contains(categoryId)).ToList();
+    }
     return Results.Ok(products.Select(p => new
     {
         p.Id,
@@ -250,6 +259,18 @@ app.MapGet("/api/v1/storefront/products", async (ITenantScopedRepository<Product
             v.TrackInventory,
             v.DisplayName
         })
+    }));
+});
+
+app.MapGet("/api/v1/storefront/categories", async (ITenantScopedRepository<Category> categoryRepo) =>
+{
+    var categories = await categoryRepo.ListAsync();
+    return Results.Ok(categories.OrderBy(c => c.DisplayOrder).Select(c => new
+    {
+        c.Id,
+        c.Name,
+        c.Slug,
+        c.ParentCategoryId
     }));
 });
 
@@ -436,6 +457,20 @@ app.MapPost("/api/v1/admin/products", async (
     await productRepo.InsertAsync(product);
 
     return Results.Ok(new { message = "Product created successfully.", productId = product.Id });
+});
+
+app.MapPost("/api/v1/admin/categories", async (
+    AdminCreateCategoryRequest req,
+    ITenantScopedRepository<Category> categoryRepo,
+    ITenantContext tenantContext) =>
+{
+    var id = $"cat_{Guid.NewGuid():N}";
+    var tenantId = new TenantId(tenantContext.Current.Value);
+
+    var category = new Category(id, tenantId, req.Name, req.Slug, req.DisplayOrder, req.ParentCategoryId);
+    await categoryRepo.InsertAsync(category);
+
+    return Results.Ok(new { message = "Category created successfully.", categoryId = category.Id });
 });
 
 app.MapPost("/api/v1/admin/products/{id}/publish", async (string id, ITenantScopedRepository<Product> productRepo) =>
@@ -836,6 +871,7 @@ public record AdminCreateCourseLessonRequest(string Title, string VideoHlsUrl, i
 public record AdminCreateCampaignDiscountRequest(string Name, DiscountType Type, decimal Value, int Priority);
 
 public record AdminRegisterDomainRequest(string CustomDomain);
+public record AdminCreateCategoryRequest(string Name, string Slug, int DisplayOrder = 0, string? ParentCategoryId = null);
 
 /// <summary>نقطهٔ ورود، برای دسترسی تست‌های یکپارچه.</summary>
 public partial class Program;

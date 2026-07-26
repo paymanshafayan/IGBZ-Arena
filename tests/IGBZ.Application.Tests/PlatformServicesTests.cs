@@ -1,5 +1,6 @@
 using FluentAssertions;
 using IGBZ.Domain.Common;
+using IGBZ.Domain.Catalog;
 using IGBZ.Domain.Integration;
 using IGBZ.Domain.Instagram;
 using IGBZ.Domain.Tenancy;
@@ -176,5 +177,20 @@ public class PlatformServicesTests
 
         mapping.Verify();
         mapping.IsVerified.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Category_should_initialize_correctly()
+    {
+        var id = "cat-123";
+        var tenantId = new TenantId("shop-x");
+        var category = new Category(id, tenantId, "کتاب و رسانه", "books-media", 5);
+
+        category.Id.Should().Be(id);
+        category.TenantId.Should().Be(tenantId.Value);
+        category.Name.Should().Be("کتاب و رسانه");
+        category.Slug.Should().Be("books-media");
+        category.DisplayOrder.Should().Be(5);
+        category.ParentCategoryId.Should().BeNull();
     }
 }
