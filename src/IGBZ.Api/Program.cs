@@ -385,6 +385,73 @@ app.MapPost("/api/v1/storefront/checkout", async (
     });
 });
 
+app.MapPost("/api/v1/storefront/cart/quote", async (
+    CartQuoteRequest req,
+    ITenantScopedRepository<Product> productRepo,
+    ITenantScopedRepository<Discount> discountRepo,
+    IOrderPricingPipeline pricingPipeline,
+    ITenantContext tenantContext) =>
+{
+    if (req.Lines is null || req.Lines.Count == 0)
+    {
+        return Results.BadRequest(new { error = "Cart is empty." });
+    }
+
+    var orderLines = new List<OrderLine>();
+    foreach (var line in req.Lines)
+    {
+        var product = await productRepo.GetByIdAsync(line.ProductId);
+        if (product is null)
+        {
+            return Results.BadRequest(new { error = $"Product '{line.ProductId}' not found." });
+        }
+
+        var variant = product.Variants.FirstOrDefault(v => v.Id == line.VariantId);
+        if (variant is null)
+        {
+            return Results.BadRequest(new { error = $"Variant '{line.VariantId}' not found on product '{line.ProductId}'." });
+        }
+
+        orderLines.Add(new OrderLine(
+            product.Id,
+            variant.Id,
+            product.Name,
+            variant.DisplayName,
+            variant.Price,
+            line.Quantity,
+            taxpayerGoodsCode: product.TaxpayerGoodsCode));
+    }
+
+    var activeDiscounts = await discountRepo.FindAsync(d => d.IsActive);
+    var shippingQuote = new ShippingQuote(new Money(req.ShippingCost), req.ShippingMethodCode);
+    var pricingRequest = new PricingRequest(
+        orderLines,
+        activeDiscounts,
+        req.CouponCode,
+        shippingQuote,
+        TaxSettings.DefaultIran,
+        DateTimeOffset.UtcNow,
+        CustomerId: req.CustomerId);
+
+    var totals = pricingPipeline.Calculate(pricingRequest);
+
+    return Results.Ok(new
+    {
+        subTotal = totals.SubTotal.Amount,
+        discountTotal = totals.DiscountTotal.Amount,
+        taxTotal = totals.TaxTotal.Amount,
+        shippingTotal = totals.ShippingTotal.Amount,
+        grandTotal = totals.GrandTotal.Amount,
+        currency = totals.GrandTotal.Currency,
+        appliedDiscounts = totals.AppliedDiscounts.Select(d => new
+        {
+            d.DiscountId,
+            d.Name,
+            d.Amount.Amount
+        })
+    });
+});
+
 app.MapGet("/api/v1/storefront/orders/{id}/download/{productId}", async (
     string id,
     string productId,
@@ -841,6 +908,14 @@ public record StorefrontCheckoutRequest(
     string? CouponCode,
     decimal ShippingCost,
     string ShippingMethodCode);
+
+public record CartQuoteLineRequest(string ProductId, string VariantId, int Quantity);
+public record CartQuoteRequest(
+    List<CartQuoteLineRequest> Lines,
+    string? CouponCode,
+    decimal ShippingCost,
+    string ShippingMethodCode,
+    string? CustomerId = null);
 
 public record AdminCreateProductVariantRequest(
     string Id,
