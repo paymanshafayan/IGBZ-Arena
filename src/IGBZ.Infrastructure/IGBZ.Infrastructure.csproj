@@ -8,5 +8,6 @@
   <ItemGroup>
     <PackageReference Include="MongoDB.Driver" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
 </Project>

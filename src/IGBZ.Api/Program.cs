@@ -13,6 +13,7 @@ using IGBZ.Infrastructure.Mongo.Migrations;
 using IGBZ.Infrastructure.Security;
 using IGBZ.Infrastructure.Tenancy;
 using IGBZ.Infrastructure.Payment;
+using IGBZ.Infrastructure.Sms;
 using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -69,6 +70,8 @@ builder.Services.AddScoped<ITenantScopedRepository<Course>>(sp => new MongoTenan
 builder.Services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
 builder.Services.AddSingleton<IOtpService, InMemoryOtpService>();
 builder.Services.AddSingleton<IPaymentGatewayService, SandboxPaymentGateway>();
+builder.Services.AddSingleton<ISmsService, KavenegarSmsService>();
+builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 
 // ---- پایپ‌لاین قیمت‌گذاری (بخش ۵.۲) ----
 builder.Services.AddSingleton<ISubTotalCalculator, SubTotalCalculator>();

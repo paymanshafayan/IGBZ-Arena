@@ -6,6 +6,8 @@ using IGBZ.Domain.Tenancy;
 using IGBZ.Domain.Lms;
 using IGBZ.Infrastructure.Payment;
 using IGBZ.Infrastructure.Security;
+using IGBZ.Infrastructure.Sms;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace IGBZ.Application.Tests;
@@ -123,5 +125,27 @@ public class PlatformServicesTests
         course.Lessons[0].Title.Should().Be("مقدمات");
         course.Lessons[0].VideoHlsUrl.Should().Be("https://stream.arvancloud.ir/hls/laravel/1");
         course.Lessons[0].DurationMinutes.Should().Be(45);
+    }
+
+    [Fact]
+    public void JwtTokenService_should_generate_token_with_correct_claims()
+    {
+        var service = new JwtTokenService();
+        var token = service.GenerateAccessToken("user-1", "tenant-1", "+989123456789", "Admin");
+
+        token.Should().NotBeNullOrWhiteSpace();
+        token.Split('.').Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task KavenegarSmsService_should_execute_without_throwing()
+    {
+        var service = new KavenegarSmsService(NullLogger<KavenegarSmsService>.Instance);
+        
+        var act1 = () => service.SendSmsAsync("+989123456789", "تست پیامک");
+        var act2 = () => service.SendOtpSmsAsync("+989123456789", "12345");
+
+        await act1.Should().NotThrowAsync();
+        await act2.Should().NotThrowAsync();
     }
 }
