@@ -255,6 +255,57 @@ app.MapPost("/api/v1/storefront/checkout", async (
     });
 });
 
+app.MapGet("/api/v1/storefront/orders/{id}/download/{productId}", async (
+    string id,
+    string productId,
+    ITenantScopedRepository<Order> orderRepo,
+    ITenantScopedRepository<Product> productRepo) =>
+{
+    var order = await orderRepo.GetByIdAsync(id);
+    if (order is null)
+    {
+        return Results.NotFound(new { error = "Order not found." });
+    }
+
+    var isPaid = order.Status == OrderStatus.Paid ||
+                 order.Status == OrderStatus.Processing ||
+                 order.Status == OrderStatus.Shipped ||
+                 order.Status == OrderStatus.Delivered;
+
+    if (!isPaid)
+    {
+        return Results.BadRequest(new { error = "Order has not been paid yet." });
+    }
+
+    var hasProduct = order.Lines.Any(l => l.ProductId == productId);
+    if (!hasProduct)
+    {
+        return Results.BadRequest(new { error = "Product not found in this order." });
+    }
+
+    var product = await productRepo.GetByIdAsync(productId);
+    if (product is null)
+    {
+        return Results.NotFound(new { error = "Product not found." });
+    }
+
+    if (product.Kind != ProductKind.Digital && product.Kind != ProductKind.Course)
+    {
+        return Results.BadRequest(new { error = "Product is not downloadable." });
+    }
+
+    var expiration = DateTimeOffset.UtcNow.AddHours(2).ToUnixTimeSeconds();
+    var mockSignedUrl = $"https://cdn.igbz.ir/files/{productId}?token=sig_{Guid.NewGuid():N}&expires={expiration}";
+
+    return Results.Ok(new
+    {
+        productId = product.Id,
+        productName = product.Name,
+        downloadUrl = mockSignedUrl,
+        expiresAt = DateTimeOffset.UtcNow.AddHours(2)
+    });
+});
+
 // ---- اندپوینت‌های فاز ۴ (Admin API) ----
 app.MapPost("/api/v1/admin/products", async (
     AdminCreateProductRequest req,
