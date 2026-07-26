@@ -8,8 +8,12 @@ public readonly record struct Money : IComparable<Money>
 {
     public const string DefaultCurrency = "IRR";
 
+    private readonly string? _currency;
+
     public decimal Amount { get; }
-    public string Currency { get; }
+
+    /// <summary>در حالت <c>default(Money)</c> ارز پیش‌فرض برگردانده می‌شود تا هرگز null نشود.</summary>
+    public string Currency => _currency ?? DefaultCurrency;
 
     public Money(decimal amount, string currency = DefaultCurrency)
     {
@@ -19,7 +23,7 @@ public readonly record struct Money : IComparable<Money>
         }
 
         Amount = amount;
-        Currency = currency.ToUpperInvariant();
+        _currency = currency.ToUpperInvariant();
     }
 
     public static Money Zero(string currency = DefaultCurrency) => new(0m, currency);
@@ -75,6 +79,12 @@ public readonly record struct Money : IComparable<Money>
         EnsureSameCurrency(this, other);
         return Amount.CompareTo(other.Amount);
     }
+
+    public bool Equals(Money other) =>
+        Amount == other.Amount
+        && string.Equals(Currency, other.Currency, StringComparison.Ordinal);
+
+    public override int GetHashCode() => HashCode.Combine(Amount, Currency);
 
     public override string ToString() => $"{Amount} {Currency}";
 

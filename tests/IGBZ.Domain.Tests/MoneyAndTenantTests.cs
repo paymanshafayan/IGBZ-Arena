@@ -1,3 +1,4 @@
+using System.Globalization;
 using FluentAssertions;
 using IGBZ.Domain.Common;
 using IGBZ.Domain.Tenancy;
@@ -21,12 +22,14 @@ public class MoneyTests
     }
 
     [Theory]
-    [InlineData(1234.4, 1234)]
-    [InlineData(1234.5, 1235)]
-    [InlineData(-1234.5, -1235)]
-    public void Rial_rounds_to_whole_units(decimal input, decimal expected)
+    [InlineData("1234.4", "1234")]
+    [InlineData("1234.5", "1235")]
+    [InlineData("-1234.5", "-1235")]
+    public void Rial_rounds_to_whole_units(string input, string expected)
     {
-        new Money(input).Round().Amount.Should().Be(expected);
+        var amount = decimal.Parse(input, CultureInfo.InvariantCulture);
+        var target = decimal.Parse(expected, CultureInfo.InvariantCulture);
+        new Money(amount).Round().Amount.Should().Be(target);
     }
 
     [Fact]

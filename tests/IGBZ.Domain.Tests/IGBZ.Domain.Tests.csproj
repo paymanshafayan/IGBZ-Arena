@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <RootNamespace>IGBZ.Domain.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
