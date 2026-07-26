@@ -15,6 +15,7 @@ using IGBZ.Infrastructure.Tenancy;
 using IGBZ.Infrastructure.Payment;
 using IGBZ.Infrastructure.Sms;
 using IGBZ.Infrastructure.BackgroundJobs;
+using IGBZ.Infrastructure.Caching;
 using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -84,6 +85,7 @@ builder.Services.AddSingleton<IPaymentGatewayService, SandboxPaymentGateway>();
 builder.Services.AddSingleton<ISmsService, KavenegarSmsService>();
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 builder.Services.AddSingleton<IBackgroundJobQueue, HangfireBackgroundJobQueue>();
+builder.Services.AddScoped<ITenantCacheService, TenantCacheService>();
 
 // ---- پایپ‌لاین قیمت‌گذاری (بخش ۵.۲) ----
 builder.Services.AddSingleton<ISubTotalCalculator, SubTotalCalculator>();

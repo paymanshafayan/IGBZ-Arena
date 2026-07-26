@@ -5,10 +5,12 @@ using IGBZ.Domain.Integration;
 using IGBZ.Domain.Instagram;
 using IGBZ.Domain.Tenancy;
 using IGBZ.Domain.Lms;
+using IGBZ.Application.Abstractions;
 using IGBZ.Infrastructure.Payment;
 using IGBZ.Infrastructure.Security;
 using IGBZ.Infrastructure.Sms;
 using IGBZ.Infrastructure.BackgroundJobs;
+using IGBZ.Infrastructure.Caching;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -192,5 +194,30 @@ public class PlatformServicesTests
         category.Slug.Should().Be("books-media");
         category.DisplayOrder.Should().Be(5);
         category.ParentCategoryId.Should().BeNull();
+    }
+
+    private sealed class MockTenantContext(string tenantId) : ITenantContext
+    {
+        public TenantId Current => new(tenantId);
+        public bool IsResolved => true;
+    }
+
+    [Fact]
+    public async Task TenantCacheService_should_isolate_cached_values_per_tenant()
+    {
+        var contextA = new MockTenantContext("shop-a");
+        var cacheA = new TenantCacheService(contextA);
+
+        var contextB = new MockTenantContext("shop-b");
+        var cacheB = new TenantCacheService(contextB);
+
+        await cacheA.SetAsync("product-1", "Tshirt A", TimeSpan.FromMinutes(5));
+        await cacheB.SetAsync("product-1", "Tshirt B", TimeSpan.FromMinutes(5));
+
+        var valA = await cacheA.GetAsync<string>("product-1");
+        var valB = await cacheB.GetAsync<string>("product-1");
+
+        valA.Should().Be("Tshirt A");
+        valB.Should().Be("Tshirt B");
     }
 }
