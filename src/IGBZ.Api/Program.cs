@@ -99,6 +99,23 @@ app.UseAuthorization();
 // باید بعد از احراز هویت باشد تا Claim مربوط به تننت در دسترس باشد.
 app.UseMiddleware<TenantResolutionMiddleware>();
 
+// ---- لایه امنیتی و سخت‌سازی فاز ۱۲ (Security Hardening Middleware) ----
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? "";
+    if (path.StartsWith("/api/v1/admin/", StringComparison.OrdinalIgnoreCase))
+    {
+        if (!context.Request.Headers.TryGetValue("X-Admin-Api-Key", out var apiKey) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new { error = "Unauthorized. X-Admin-Api-Key header is missing or empty." });
+            return;
+        }
+    }
+    await next();
+});
+
 app.MapHealthChecks("/health").AllowAnonymous();
 
 app.MapGet("/api/v1/whoami", (ITenantContext tenant) => Results.Ok(new
