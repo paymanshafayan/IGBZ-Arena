@@ -9,6 +9,7 @@ using IGBZ.Domain.Tenancy;
 using IGBZ.Domain.Integration;
 using IGBZ.Domain.Lms;
 using IGBZ.Infrastructure.Mongo;
+using IGBZ.Infrastructure.Mongo.Migrations;
 using IGBZ.Infrastructure.Security;
 using IGBZ.Infrastructure.Tenancy;
 using IGBZ.Infrastructure.Payment;
@@ -86,6 +87,14 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// ---- اجرای خودکار مهاجرت‌های پایگاه داده (فاز ۱ - بخش ۱) ----
+using (var scope = app.Services.CreateScope())
+{
+    var database = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
+    var runner = new MongoMigrationRunner(database);
+    await runner.RunAsync([new Migration001_CreateIndexes()]).ConfigureAwait(false);
+}
 
 if (app.Environment.IsDevelopment())
 {
