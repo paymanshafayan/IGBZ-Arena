@@ -1,5 +1,8 @@
 using FluentAssertions;
 using IGBZ.Domain.Common;
+using IGBZ.Domain.Integration;
+using IGBZ.Domain.Instagram;
+using IGBZ.Domain.Tenancy;
 using IGBZ.Infrastructure.Payment;
 using IGBZ.Infrastructure.Security;
 using Xunit;
@@ -44,5 +47,57 @@ public class PlatformServicesTests
         var verifyResult = await gateway.VerifyPaymentAsync(orderId, amount, authority);
         verifyResult.Succeeded.Should().BeTrue();
         verifyResult.TransactionId.Should().StartWith("TXN_");
+    }
+
+    [Fact]
+    public void IntegrationConnection_should_initialize_correctly()
+    {
+        var id = "conn-1";
+        var tenantId = new TenantId("shop-x");
+        var connection = new IntegrationConnection(
+            id,
+            tenantId,
+            "Digikala",
+            IntegrationType.Marketplace,
+            "secret_api_key_123",
+            new Dictionary<string, string> { { "sync_interval", "30" } });
+
+        connection.Id.Should().Be(id);
+        connection.TenantId.Should().Be(tenantId.Value);
+        connection.ProviderName.Should().Be("Digikala");
+        connection.Type.Should().Be(IntegrationType.Marketplace);
+        connection.ApiKey.Should().Be("secret_api_key_123");
+        connection.IsConnected.Should().BeTrue();
+        connection.Settings["sync_interval"].Should().Be("30");
+
+        connection.Disconnect();
+        connection.IsConnected.Should().BeFalse();
+    }
+
+    [Fact]
+    public void InstagramCampaign_should_initialize_correctly()
+    {
+        var id = "camp-1";
+        var tenantId = new TenantId("shop-x");
+        var campaign = new InstagramCampaign(
+            id,
+            tenantId,
+            "کمپین استوری",
+            CampaignKind.MentionStory,
+            "قیمت",
+            "سلام! قیمت به دایرکت ارسال شد",
+            "COUPON15");
+
+        campaign.Id.Should().Be(id);
+        campaign.TenantId.Should().Be(tenantId.Value);
+        campaign.Title.Should().Be("کمپین استوری");
+        campaign.Kind.Should().Be(CampaignKind.MentionStory);
+        campaign.Keyword.Should().Be("قیمت");
+        campaign.ResponseTemplate.Should().Be("سلام! قیمت به دایرکت ارسال شد");
+        campaign.CouponCodeToAttach.Should().Be("COUPON15");
+        campaign.IsActive.Should().BeTrue();
+
+        campaign.Deactivate();
+        campaign.IsActive.Should().BeFalse();
     }
 }

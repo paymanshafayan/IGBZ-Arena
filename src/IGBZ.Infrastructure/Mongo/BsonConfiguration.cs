@@ -5,6 +5,7 @@ using IGBZ.Domain.Pricing;
 using IGBZ.Domain.Tenancy;
 using IGBZ.Domain.Instagram;
 using IGBZ.Domain.Lms;
+using IGBZ.Domain.Integration;
 using MongoDB.Bson;
 using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
@@ -245,6 +246,30 @@ public static class BsonConfiguration
                 cm.MapProperty(l => l.Title);
                 cm.MapProperty(l => l.VideoHlsUrl);
                 cm.MapProperty(l => l.DurationMinutes);
+            });
+
+            BsonClassMap.RegisterClassMap<IntegrationConnection>(cm =>
+            {
+                cm.MapConstructor(typeof(IntegrationConnection).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(IntegrationType),
+                    typeof(string),
+                    typeof(bool),
+                    typeof(IReadOnlyDictionary<string, string>),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?)
+                ])!);
+                cm.MapIdProperty(c => c.Id);
+                cm.MapProperty(c => c.TenantId);
+                cm.MapProperty(c => c.ProviderName);
+                cm.MapProperty(c => c.Type);
+                cm.MapProperty(c => c.ApiKey);
+                cm.MapProperty(c => c.IsConnected);
+                cm.MapProperty(c => c.Settings);
+                cm.MapProperty(c => c.CreatedAtUtc);
+                cm.MapProperty(c => c.UpdatedAtUtc);
             });
 
             _registered = true;

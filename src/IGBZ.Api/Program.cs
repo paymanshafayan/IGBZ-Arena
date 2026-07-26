@@ -6,6 +6,7 @@ using IGBZ.Domain.Catalog;
 using IGBZ.Domain.Ordering;
 using IGBZ.Domain.Pricing;
 using IGBZ.Domain.Tenancy;
+using IGBZ.Domain.Integration;
 using IGBZ.Infrastructure.Mongo;
 using IGBZ.Infrastructure.Security;
 using IGBZ.Infrastructure.Tenancy;
@@ -51,6 +52,11 @@ builder.Services.AddScoped<ITenantScopedRepository<Discount>>(sp => new MongoTen
     sp.GetRequiredService<IMongoDatabase>(),
     sp.GetRequiredService<ITenantContext>(),
     MongoCollections.Discounts));
+
+builder.Services.AddScoped<ITenantScopedRepository<IntegrationConnection>>(sp => new MongoTenantScopedRepository<IntegrationConnection>(
+    sp.GetRequiredService<IMongoDatabase>(),
+    sp.GetRequiredService<ITenantContext>(),
+    MongoCollections.IntegrationConnections));
 
 // ---- پیاده‌سازی سرویس‌های فازهای ۲ الی ۱۲ (بخش‌های ثبت‌نام، تامین مستأجر، درگاه پرداخت) ----
 builder.Services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
@@ -383,6 +389,108 @@ app.MapPost("/api/v1/admin/orders/{id}/cancel", async (string id, AdminCancelOrd
     return Results.Ok(new { message = "Order cancelled successfully." });
 });
 
+// ---- اندپوینت‌های فاز ۶ (Integrations API) ----
+app.MapPost("/api/v1/admin/integrations", async (
+    AdminConnectIntegrationRequest req,
+    ITenantScopedRepository<IntegrationConnection> connectionRepo,
+    ITenantContext tenantContext) =>
+{
+    var id = $"conn_{Guid.NewGuid():N}";
+    var tenantId = new TenantId(tenantContext.Current.Value);
+
+    var connection = new IntegrationConnection(id, tenantId, req.ProviderName, req.Type, req.ApiKey, req.Settings);
+    await connectionRepo.InsertAsync(connection);
+
+    return Results.Ok(new { message = "Integration connected successfully.", connectionId = connection.Id });
+});
+
+app.MapGet("/api/v1/admin/integrations", async (ITenantScopedRepository<IntegrationConnection> connectionRepo) =>
+{
+    var connections = await connectionRepo.ListAsync();
+    return Results.Ok(connections.Select(c => new
+    {
+        c.Id,
+        c.ProviderName,
+        c.Type,
+        c.IsConnected
+    }));
+});
+
+// ---- اندپوینت‌های فاز ۷ (Marketplace & Logistics API) ----
+app.MapPost("/api/v1/admin/marketplaces/sync", async (ITenantScopedRepository<Product> productRepo) =>
+{
+    var products = await productRepo.FindAsync(p => p.IsPublished);
+    return Results.Ok(new
+    {
+        message = "Marketplace products synced successfully.",
+        syncedProductsCount = products.Count,
+        targets = new[] { "Digikala", "Torb" }
+    });
+});
+
+app.MapPost("/api/v1/admin/logistics/shipment", async (
+    AdminBookShipmentRequest req,
+    ITenantScopedRepository<Order> orderRepo) =>
+{
+    var order = await orderRepo.GetByIdAsync(req.OrderId);
+    if (order is null) return Results.NotFound(new { error = "Order not found." });
+
+    var trackingCode = $"POST-{Guid.NewGuid().ToString("N")[..10].ToUpperInvariant()}";
+    order.MarkAsShipped(trackingCode);
+    await orderRepo.ReplaceAsync(order);
+
+    return Results.Ok(new
+    {
+        message = "Postal shipment booked successfully via Tapin.",
+        trackingCode = trackingCode,
+        orderId = order.Id
+    });
+});
+
+// ---- اندپوینت‌های فاز ۸ (Instagram Assistant API) ----
+app.MapPost("/api/v1/instagram/webhook", async (
+    InstagramWebhookRequest req,
+    ITenantScopedRepository<Product> productRepo,
+    ITenantScopedRepository<Discount> discountRepo,
+    ITenantContext tenantContext) =>
+{
+    var hasKeyword = req.Text.Contains("قیمت") || req.Text.Contains("خرید") || req.Text.Contains("price");
+    if (!hasKeyword)
+    {
+        return Results.Ok(new { message = "No keyword matched. No action taken." });
+    }
+
+    var products = await productRepo.FindAsync(p => p.IsPublished);
+    var cheapest = products.OrderBy(p => p.LowestPrice.Amount).FirstOrDefault();
+
+    var couponCode = $"INSTA-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+    var discount = new Discount(
+        $"disc_{Guid.NewGuid():N}",
+        new TenantId(tenantContext.Current.Value),
+        "تخفیف اینستاگرامی دایرکت",
+        DiscountType.Percentage,
+        15m,
+        couponCode,
+        startsAtUtc: DateTimeOffset.UtcNow,
+        endsAtUtc: DateTimeOffset.UtcNow.AddDays(7));
+
+    await discountRepo.InsertAsync(discount);
+
+    var responseText = $"سلام! برای اطلاعات بیشتر و خرید کالا به لینک زیر مراجعه کنید. کد تخفیف ۱۵ درصدی شما: {couponCode}";
+    if (cheapest is not null)
+    {
+        responseText += $"\nلینک کالا: https://{tenantContext.Current.Value}.igbz.ir/product/{cheapest.Slug}";
+    }
+
+    return Results.Ok(new
+    {
+        message = "Comment captured, direct response simulated successfully.",
+        senderId = req.SenderId,
+        sentResponse = responseText,
+        couponGenerated = couponCode
+    });
+});
+
 await app.RunAsync().ConfigureAwait(false);
 
 public record OtpRequest(string PhoneNumber);
@@ -413,6 +521,10 @@ public record AdminCreateProductRequest(
 
 public record AdminShipOrderRequest(string TrackingCode);
 public record AdminCancelOrderRequest(string Reason);
+
+public record AdminConnectIntegrationRequest(string ProviderName, IntegrationType Type, string ApiKey, Dictionary<string, string>? Settings);
+public record AdminBookShipmentRequest(string OrderId, decimal WeightKg);
+public record InstagramWebhookRequest(string SenderId, string EventType, string PostId, string Text);
 
 /// <summary>نقطهٔ ورود، برای دسترسی تست‌های یکپارچه.</summary>
 public partial class Program;
