@@ -248,6 +248,26 @@ public static class BsonConfiguration
                 cm.MapProperty(l => l.DurationMinutes);
             });
 
+            BsonClassMap.RegisterClassMap<StoreDomainMapping>(cm =>
+            {
+                cm.MapConstructor(typeof(StoreDomainMapping).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(bool),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?)
+                ])!);
+                cm.MapIdProperty(d => d.Id);
+                cm.MapProperty(d => d.TenantId);
+                cm.MapProperty(d => d.CustomDomain);
+                cm.MapProperty(d => d.VerificationToken);
+                cm.MapProperty(d => d.IsVerified);
+                cm.MapProperty(d => d.CreatedAtUtc);
+                cm.MapProperty(d => d.UpdatedAtUtc);
+            });
+
             BsonClassMap.RegisterClassMap<IntegrationConnection>(cm =>
             {
                 cm.MapConstructor(typeof(IntegrationConnection).GetConstructor([

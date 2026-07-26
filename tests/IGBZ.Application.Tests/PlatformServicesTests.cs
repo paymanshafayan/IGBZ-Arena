@@ -160,4 +160,21 @@ public class PlatformServicesTests
         jobId.Should().NotBeNullOrWhiteSpace();
         jobId.Length.Should().Be(8);
     }
+
+    [Fact]
+    public void StoreDomainMapping_should_initialize_and_verify_correctly()
+    {
+        var id = "dom-123";
+        var tenantId = new TenantId("shop-x");
+        var mapping = new StoreDomainMapping(id, tenantId, "my-store.com", "igbz-token-123");
+
+        mapping.Id.Should().Be(id);
+        mapping.TenantId.Should().Be(tenantId.Value);
+        mapping.CustomDomain.Should().Be("my-store.com");
+        mapping.VerificationToken.Should().Be("igbz-token-123");
+        mapping.IsVerified.Should().BeFalse();
+
+        mapping.Verify();
+        mapping.IsVerified.Should().BeTrue();
+    }
 }

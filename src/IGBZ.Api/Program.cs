@@ -67,6 +67,11 @@ builder.Services.AddScoped<ITenantScopedRepository<Course>>(sp => new MongoTenan
     sp.GetRequiredService<ITenantContext>(),
     "courses"));
 
+builder.Services.AddScoped<ITenantScopedRepository<StoreDomainMapping>>(sp => new MongoTenantScopedRepository<StoreDomainMapping>(
+    sp.GetRequiredService<IMongoDatabase>(),
+    sp.GetRequiredService<ITenantContext>(),
+    MongoCollections.PlatformDomainMappings));
+
 // ---- پیاده‌سازی سرویس‌های فازهای ۲ الی ۱۲ (بخش‌های ثبت‌نام، تامین مستأجر، درگاه پرداخت) ----
 builder.Services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
 builder.Services.AddSingleton<IOtpService, InMemoryOtpService>();
@@ -487,6 +492,60 @@ app.MapPost("/api/v1/admin/orders/{id}/cancel", async (string id, AdminCancelOrd
     return Results.Ok(new { message = "Order cancelled successfully." });
 });
 
+// ---- اندپوینت‌های فاز ۲ - بخش ۲ (Custom Domain Mapping API) ----
+app.MapPost("/api/v1/admin/domains", async (
+    AdminRegisterDomainRequest req,
+    ITenantScopedRepository<StoreDomainMapping> domainRepo,
+    ITenantContext tenantContext) =>
+{
+    var id = $"dom_{Guid.NewGuid():N}";
+    var tenantId = new TenantId(tenantContext.Current.Value);
+
+    var verificationToken = $"igbz-verification-token={Guid.NewGuid():N}";
+
+    var mapping = new StoreDomainMapping(id, tenantId, req.CustomDomain, verificationToken);
+    await domainRepo.InsertAsync(mapping);
+
+    return Results.Ok(new
+    {
+        message = "Custom domain registered successfully. Please add CNAME pointing to platform.igbz.ir and TXT record for verification.",
+        domainId = mapping.Id,
+        customDomain = mapping.CustomDomain,
+        verificationToken = mapping.VerificationToken
+    });
+});
+
+app.MapPost("/api/v1/admin/domains/{id}/verify", async (
+    string id,
+    ITenantScopedRepository<StoreDomainMapping> domainRepo) =>
+{
+    var mapping = await domainRepo.GetByIdAsync(id);
+    if (mapping is null) return Results.NotFound(new { error = "Domain mapping not found." });
+
+    mapping.Verify();
+    await domainRepo.ReplaceAsync(mapping);
+
+    return Results.Ok(new
+    {
+        message = "Custom domain verified and activated successfully!",
+        domainId = mapping.Id,
+        customDomain = mapping.CustomDomain,
+        isVerified = mapping.IsVerified
+    });
+});
+
+app.MapGet("/api/v1/admin/domains", async (ITenantScopedRepository<StoreDomainMapping> domainRepo) =>
+{
+    var mappings = await domainRepo.ListAsync();
+    return Results.Ok(mappings.Select(m => new
+    {
+        m.Id,
+        m.CustomDomain,
+        m.IsVerified,
+        m.CreatedAtUtc
+    }));
+});
+
 // ---- اندپوینت‌های فاز ۶ (Integrations API) ----
 app.MapPost("/api/v1/admin/integrations", async (
     AdminConnectIntegrationRequest req,
@@ -775,6 +834,8 @@ public record AdminAiSeoOptimizeRequest(string ProductId);
 public record AdminCreateCourseRequest(string ProductId, string Title);
 public record AdminCreateCourseLessonRequest(string Title, string VideoHlsUrl, int DurationMinutes);
 public record AdminCreateCampaignDiscountRequest(string Name, DiscountType Type, decimal Value, int Priority);
+
+public record AdminRegisterDomainRequest(string CustomDomain);
 
 /// <summary>نقطهٔ ورود، برای دسترسی تست‌های یکپارچه.</summary>
 public partial class Program;
