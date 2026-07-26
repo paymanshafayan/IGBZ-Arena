@@ -40,7 +40,11 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next, ILogger<Ten
         tenantContext.Set(resolved.Value);
         context.Items[TenantClaimType] = resolved.Value.Value;
 
-        await next(context).ConfigureAwait(false);
+        // ---- پایش سیستم و ساختار لاگین با تزریق شناسه مستأجر (فاز ۱ - بخش ۳) ----
+        using (logger.BeginScope(new Dictionary<string, object> { { "tenantId", resolved.Value.Value } }))
+        {
+            await next(context).ConfigureAwait(false);
+        }
     }
 
     private static TenantId? ResolveFromClaims(HttpContext context)

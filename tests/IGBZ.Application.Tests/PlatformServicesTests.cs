@@ -7,6 +7,7 @@ using IGBZ.Domain.Lms;
 using IGBZ.Infrastructure.Payment;
 using IGBZ.Infrastructure.Security;
 using IGBZ.Infrastructure.Sms;
+using IGBZ.Infrastructure.BackgroundJobs;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -147,5 +148,16 @@ public class PlatformServicesTests
 
         await act1.Should().NotThrowAsync();
         await act2.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public void BackgroundJobQueue_should_enqueue_jobs_correctly()
+    {
+        var queue = new HangfireBackgroundJobQueue(NullLogger<HangfireBackgroundJobQueue>.Instance);
+
+        var jobId = queue.Enqueue(() => Console.WriteLine("Background task running"));
+
+        jobId.Should().NotBeNullOrWhiteSpace();
+        jobId.Length.Should().Be(8);
     }
 }
