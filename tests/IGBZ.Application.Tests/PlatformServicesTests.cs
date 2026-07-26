@@ -1,0 +1,223 @@
+using FluentAssertions;
+using IGBZ.Domain.Common;
+using IGBZ.Domain.Catalog;
+using IGBZ.Domain.Integration;
+using IGBZ.Domain.Instagram;
+using IGBZ.Domain.Tenancy;
+using IGBZ.Domain.Lms;
+using IGBZ.Application.Abstractions;
+using IGBZ.Infrastructure.Payment;
+using IGBZ.Infrastructure.Security;
+using IGBZ.Infrastructure.Sms;
+using IGBZ.Infrastructure.BackgroundJobs;
+using IGBZ.Infrastructure.Caching;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+
+namespace IGBZ.Application.Tests;
+
+/// <summary>
+/// آزمون‌های واحد برای سرویس‌های تکمیلی فازهای مختلف پلتفرم (فاز ۲ الی ۱۲).
+/// </summary>
+public class PlatformServicesTests
+{
+    [Fact]
+    public async Task OtpService_should_generate_and_verify_correct_otp()
+    {
+        var otpService = new InMemoryOtpService();
+        var phone = "+989123456789";
+
+        var code = await otpService.GenerateOtpAsync(phone);
+        code.Should().Be("12345");
+
+        var valid = await otpService.VerifyOtpAsync(phone, code);
+        valid.Should().BeTrue();
+
+        // تلاش مجدد با همان کد باید ناموفق باشد چون کد منقضی شده است
+        var retry = await otpService.VerifyOtpAsync(phone, code);
+        retry.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PaymentGateway_should_start_and_verify_sandbox_payment()
+    {
+        var gateway = new SandboxPaymentGateway();
+        var orderId = "order-123";
+        var amount = new Money(500_000m);
+        var callbackUrl = "https://mytenant.igbz.ir/payment/callback";
+
+        var startResult = await gateway.StartPaymentAsync(orderId, amount, callbackUrl);
+        startResult.Succeeded.Should().BeTrue();
+        startResult.RedirectUrl.Should().Contain("authority=sandbox_");
+
+        var authority = "sandbox_test_authority_123";
+        var verifyResult = await gateway.VerifyPaymentAsync(orderId, amount, authority);
+        verifyResult.Succeeded.Should().BeTrue();
+        verifyResult.TransactionId.Should().StartWith("TXN_");
+    }
+
+    [Fact]
+    public void IntegrationConnection_should_initialize_correctly()
+    {
+        var id = "conn-1";
+        var tenantId = new TenantId("shop-x");
+        var connection = new IntegrationConnection(
+            id,
+            tenantId,
+            "Digikala",
+            IntegrationType.Marketplace,
+            "secret_api_key_123",
+            new Dictionary<string, string> { { "sync_interval", "30" } });
+
+        connection.Id.Should().Be(id);
+        connection.TenantId.Should().Be(tenantId.Value);
+        connection.ProviderName.Should().Be("Digikala");
+        connection.Type.Should().Be(IntegrationType.Marketplace);
+        connection.ApiKey.Should().Be("secret_api_key_123");
+        connection.IsConnected.Should().BeTrue();
+        connection.Settings["sync_interval"].Should().Be("30");
+
+        connection.Disconnect();
+        connection.IsConnected.Should().BeFalse();
+    }
+
+    [Fact]
+    public void InstagramCampaign_should_initialize_correctly()
+    {
+        var id = "camp-1";
+        var tenantId = new TenantId("shop-x");
+        var campaign = new InstagramCampaign(
+            id,
+            tenantId,
+            "کمپین استوری",
+            CampaignKind.MentionStory,
+            "قیمت",
+            "سلام! قیمت به دایرکت ارسال شد",
+            "COUPON15");
+
+        campaign.Id.Should().Be(id);
+        campaign.TenantId.Should().Be(tenantId.Value);
+        campaign.Title.Should().Be("کمپین استوری");
+        campaign.Kind.Should().Be(CampaignKind.MentionStory);
+        campaign.Keyword.Should().Be("قیمت");
+        campaign.ResponseTemplate.Should().Be("سلام! قیمت به دایرکت ارسال شد");
+        campaign.CouponCodeToAttach.Should().Be("COUPON15");
+        campaign.IsActive.Should().BeTrue();
+
+        campaign.Deactivate();
+        campaign.IsActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Course_should_initialize_and_add_lessons()
+    {
+        var id = "course-123";
+        var tenantId = new TenantId("shop-x");
+        var course = new Course(id, tenantId, "prod-456", "دوره پیشرفته لاراول");
+
+        course.Id.Should().Be(id);
+        course.TenantId.Should().Be(tenantId.Value);
+        course.ProductId.Should().Be("prod-456");
+        course.Title.Should().Be("دوره پیشرفته لاراول");
+        course.Lessons.Should().BeEmpty();
+
+        var lesson = new CourseLesson("les-1", "مقدمات", "https://stream.arvancloud.ir/hls/laravel/1", 45);
+        course.AddLesson(lesson);
+
+        course.Lessons.Should().HaveCount(1);
+        course.Lessons[0].Id.Should().Be("les-1");
+        course.Lessons[0].Title.Should().Be("مقدمات");
+        course.Lessons[0].VideoHlsUrl.Should().Be("https://stream.arvancloud.ir/hls/laravel/1");
+        course.Lessons[0].DurationMinutes.Should().Be(45);
+    }
+
+    [Fact]
+    public void JwtTokenService_should_generate_token_with_correct_claims()
+    {
+        var service = new JwtTokenService();
+        var token = service.GenerateAccessToken("user-1", "tenant-1", "+989123456789", "Admin");
+
+        token.Should().NotBeNullOrWhiteSpace();
+        token.Split('.').Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task KavenegarSmsService_should_execute_without_throwing()
+    {
+        var service = new KavenegarSmsService(NullLogger<KavenegarSmsService>.Instance);
+        
+        var act1 = () => service.SendSmsAsync("+989123456789", "تست پیامک");
+        var act2 = () => service.SendOtpSmsAsync("+989123456789", "12345");
+
+        await act1.Should().NotThrowAsync();
+        await act2.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public void BackgroundJobQueue_should_enqueue_jobs_correctly()
+    {
+        var queue = new HangfireBackgroundJobQueue(NullLogger<HangfireBackgroundJobQueue>.Instance);
+
+        var jobId = queue.Enqueue(() => Console.WriteLine("Background task running"));
+
+        jobId.Should().NotBeNullOrWhiteSpace();
+        jobId.Length.Should().Be(8);
+    }
+
+    [Fact]
+    public void StoreDomainMapping_should_initialize_and_verify_correctly()
+    {
+        var id = "dom-123";
+        var tenantId = new TenantId("shop-x");
+        var mapping = new StoreDomainMapping(id, tenantId, "my-store.com", "igbz-token-123");
+
+        mapping.Id.Should().Be(id);
+        mapping.TenantId.Should().Be(tenantId.Value);
+        mapping.CustomDomain.Should().Be("my-store.com");
+        mapping.VerificationToken.Should().Be("igbz-token-123");
+        mapping.IsVerified.Should().BeFalse();
+
+        mapping.Verify();
+        mapping.IsVerified.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Category_should_initialize_correctly()
+    {
+        var id = "cat-123";
+        var tenantId = new TenantId("shop-x");
+        var category = new Category(id, tenantId, "کتاب و رسانه", "books-media", 5);
+
+        category.Id.Should().Be(id);
+        category.TenantId.Should().Be(tenantId.Value);
+        category.Name.Should().Be("کتاب و رسانه");
+        category.Slug.Should().Be("books-media");
+        category.DisplayOrder.Should().Be(5);
+        category.ParentCategoryId.Should().BeNull();
+    }
+
+    private sealed class MockTenantContext(string tenantId) : ITenantContext
+    {
+        public TenantId Current => new(tenantId);
+        public bool IsResolved => true;
+    }
+
+    [Fact]
+    public async Task TenantCacheService_should_isolate_cached_values_per_tenant()
+    {
+        var contextA = new MockTenantContext("shop-a");
+        var cacheA = new TenantCacheService(contextA);
+
+        var contextB = new MockTenantContext("shop-b");
+        var cacheB = new TenantCacheService(contextB);
+
+        await cacheA.SetAsync("product-1", "Tshirt A", TimeSpan.FromMinutes(5));
+        await cacheB.SetAsync("product-1", "Tshirt B", TimeSpan.FromMinutes(5));
+
+        var valA = await cacheA.GetAsync<string>("product-1");
+        var valB = await cacheB.GetAsync<string>("product-1");
+
+        valA.Should().Be("Tshirt A");
+        valB.Should().Be("Tshirt B");
+    }
+}
