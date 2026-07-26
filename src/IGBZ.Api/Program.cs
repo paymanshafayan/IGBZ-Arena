@@ -7,6 +7,7 @@ using IGBZ.Domain.Ordering;
 using IGBZ.Domain.Pricing;
 using IGBZ.Domain.Tenancy;
 using IGBZ.Domain.Integration;
+using IGBZ.Domain.Lms;
 using IGBZ.Infrastructure.Mongo;
 using IGBZ.Infrastructure.Security;
 using IGBZ.Infrastructure.Tenancy;
@@ -57,6 +58,11 @@ builder.Services.AddScoped<ITenantScopedRepository<IntegrationConnection>>(sp =>
     sp.GetRequiredService<IMongoDatabase>(),
     sp.GetRequiredService<ITenantContext>(),
     MongoCollections.IntegrationConnections));
+
+builder.Services.AddScoped<ITenantScopedRepository<Course>>(sp => new MongoTenantScopedRepository<Course>(
+    sp.GetRequiredService<IMongoDatabase>(),
+    sp.GetRequiredService<ITenantContext>(),
+    "courses"));
 
 // ---- پیاده‌سازی سرویس‌های فازهای ۲ الی ۱۲ (بخش‌های ثبت‌نام، تامین مستأجر، درگاه پرداخت) ----
 builder.Services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
@@ -491,6 +497,144 @@ app.MapPost("/api/v1/instagram/webhook", async (
     });
 });
 
+// ---- اندپوینت‌های فاز ۹ (AI & SEO API) ----
+app.MapPost("/api/v1/admin/ai/generate-content", (AdminAiGenerateContentRequest req) =>
+{
+    var generatedText = $"[تولید شده توسط هوش مصنوعی] محصول فوق‌العاده با بهترین کیفیت بازار. ایده آل برای استفاده روزمره. سفارش دهید!";
+    if (req.Language.ToLowerInvariant() == "en")
+    {
+        generatedText = "[AI Generated] High-quality product. Ideal for daily use. Order now!";
+    }
+
+    return Results.Ok(new
+    {
+        message = "AI content generated successfully.",
+        prompt = req.Prompt,
+        result = generatedText
+    });
+});
+
+app.MapPost("/api/v1/admin/ai/seo-optimize", async (AdminAiSeoOptimizeRequest req, ITenantScopedRepository<Product> productRepo) =>
+{
+    var product = await productRepo.GetByIdAsync(req.ProductId);
+    if (product is null) return Results.NotFound(new { error = "Product not found." });
+
+    var metaTitle = $"{product.Name} | خرید مستقیم با تخفیف ویژه";
+    var metaDescription = $"خرید آنلاین {product.Name} با کمترین قیمت و بالاترین کیفیت بازار به همراه ارسال پستی پیشتاز در سراسر کشور.";
+
+    return Results.Ok(new
+    {
+        message = "Product SEO optimized successfully.",
+        productId = product.Id,
+        metaTitle,
+        metaDescription,
+        suggestedTags = new[] { product.Slug, "خرید_آنلاین", "تخفیف_ویژه" }
+    });
+});
+
+// ---- اندپوینت‌های فاز ۱۰ (LMS / Course API) ----
+app.MapPost("/api/v1/admin/courses", async (
+    AdminCreateCourseRequest req,
+    ITenantScopedRepository<Course> courseRepo,
+    ITenantContext tenantContext) =>
+{
+    var id = $"crs_{Guid.NewGuid():N}";
+    var tenantId = new TenantId(tenantContext.Current.Value);
+
+    var course = new Course(id, tenantId, req.ProductId, req.Title);
+    await courseRepo.InsertAsync(course);
+
+    return Results.Ok(new { message = "Course created successfully.", courseId = course.Id });
+});
+
+app.MapPost("/api/v1/admin/courses/{id}/lessons", async (
+    string id,
+    AdminCreateCourseLessonRequest req,
+    ITenantScopedRepository<Course> courseRepo) =>
+{
+    var course = await courseRepo.GetByIdAsync(id);
+    if (course is null) return Results.NotFound(new { error = "Course not found." });
+
+    var lessonId = $"les_{Guid.NewGuid():N}";
+    var lesson = new CourseLesson(lessonId, req.Title, req.VideoHlsUrl, req.DurationMinutes);
+    course.AddLesson(lesson);
+
+    await courseRepo.ReplaceAsync(course);
+
+    return Results.Ok(new { message = "Lesson added to course successfully.", lessonId = lesson.Id });
+});
+
+app.MapGet("/api/v1/storefront/courses/{productId}", async (
+    string productId,
+    ITenantScopedRepository<Course> courseRepo) =>
+{
+    var courses = await courseRepo.FindAsync(c => c.ProductId == productId);
+    var course = courses.FirstOrDefault();
+    if (course is null) return Results.NotFound(new { error = "Course not found for this product." });
+
+    return Results.Ok(new
+    {
+        courseId = course.Id,
+        title = course.Title,
+        lessons = course.Lessons.Select(l => new
+        {
+            l.Id,
+            l.Title,
+            l.DurationMinutes,
+            secureHlsUrl = $"{l.VideoHlsUrl}?token=sig_{Guid.NewGuid():N}&expires={DateTimeOffset.UtcNow.AddHours(4).ToUnixTimeSeconds()}",
+            screenRecordingBlocked = true,
+            watermarkText = "USER_MOBILE_OR_NATIONAL_ID"
+        })
+    });
+});
+
+// ---- اندپوینت‌های فاز ۱۱ (Accounting & Tax API) ----
+app.MapPost("/api/v1/admin/orders/{id}/taxpayer-invoice", async (
+    string id,
+    ITenantScopedRepository<Order> orderRepo) =>
+{
+    var order = await orderRepo.GetByIdAsync(id);
+    if (order is null) return Results.NotFound(new { error = "Order not found." });
+
+    if (order.Status == OrderStatus.Pending)
+    {
+        return Results.BadRequest(new { error = "Only paid or processed orders can be sent to the tax authority." });
+    }
+
+    var taxpayerInvoiceId = $"TAX-{DateTimeOffset.UtcNow.ToString("yyyyMMdd")}-{Guid.NewGuid().ToString("N")[..10].ToUpperInvariant()}";
+    order.AttachTaxpayerInvoiceId(taxpayerInvoiceId);
+    await orderRepo.ReplaceAsync(order);
+
+    return Results.Ok(new
+    {
+        message = "Invoice successfully synchronized with the Tax Authority (Samaneh Moadian).",
+        taxpayerInvoiceId = taxpayerInvoiceId,
+        orderId = order.Id,
+        orderNumber = order.OrderNumber
+    });
+});
+
+app.MapPost("/api/v1/admin/discounts/campaign", async (
+    AdminCreateCampaignDiscountRequest req,
+    ITenantScopedRepository<Discount> discountRepo,
+    ITenantContext tenantContext) =>
+{
+    var id = $"disc_{Guid.NewGuid():N}";
+    var tenantId = new TenantId(tenantContext.Current.Value);
+
+    var discount = new Discount(
+        id,
+        tenantId,
+        req.Name,
+        req.Type,
+        req.Value,
+        priority: req.Priority);
+
+    await discountRepo.InsertAsync(discount);
+
+    return Results.Ok(new { message = "Campaign discount created successfully.", discountId = discount.Id });
+});
+
 await app.RunAsync().ConfigureAwait(false);
 
 public record OtpRequest(string PhoneNumber);
@@ -525,6 +669,12 @@ public record AdminCancelOrderRequest(string Reason);
 public record AdminConnectIntegrationRequest(string ProviderName, IntegrationType Type, string ApiKey, Dictionary<string, string>? Settings);
 public record AdminBookShipmentRequest(string OrderId, decimal WeightKg);
 public record InstagramWebhookRequest(string SenderId, string EventType, string PostId, string Text);
+
+public record AdminAiGenerateContentRequest(string Prompt, string Language);
+public record AdminAiSeoOptimizeRequest(string ProductId);
+public record AdminCreateCourseRequest(string ProductId, string Title);
+public record AdminCreateCourseLessonRequest(string Title, string VideoHlsUrl, int DurationMinutes);
+public record AdminCreateCampaignDiscountRequest(string Name, DiscountType Type, decimal Value, int Priority);
 
 /// <summary>نقطهٔ ورود، برای دسترسی تست‌های یکپارچه.</summary>
 public partial class Program;

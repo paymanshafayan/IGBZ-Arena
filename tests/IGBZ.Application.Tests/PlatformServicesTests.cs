@@ -3,6 +3,7 @@ using IGBZ.Domain.Common;
 using IGBZ.Domain.Integration;
 using IGBZ.Domain.Instagram;
 using IGBZ.Domain.Tenancy;
+using IGBZ.Domain.Lms;
 using IGBZ.Infrastructure.Payment;
 using IGBZ.Infrastructure.Security;
 using Xunit;
@@ -99,5 +100,28 @@ public class PlatformServicesTests
 
         campaign.Deactivate();
         campaign.IsActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Course_should_initialize_and_add_lessons()
+    {
+        var id = "course-123";
+        var tenantId = new TenantId("shop-x");
+        var course = new Course(id, tenantId, "prod-456", "دوره پیشرفته لاراول");
+
+        course.Id.Should().Be(id);
+        course.TenantId.Should().Be(tenantId.Value);
+        course.ProductId.Should().Be("prod-456");
+        course.Title.Should().Be("دوره پیشرفته لاراول");
+        course.Lessons.Should().BeEmpty();
+
+        var lesson = new CourseLesson("les-1", "مقدمات", "https://stream.arvancloud.ir/hls/laravel/1", 45);
+        course.AddLesson(lesson);
+
+        course.Lessons.Should().HaveCount(1);
+        course.Lessons[0].Id.Should().Be("les-1");
+        course.Lessons[0].Title.Should().Be("مقدمات");
+        course.Lessons[0].VideoHlsUrl.Should().Be("https://stream.arvancloud.ir/hls/laravel/1");
+        course.Lessons[0].DurationMinutes.Should().Be(45);
     }
 }
