@@ -1,4 +1,10 @@
 using IGBZ.Domain.Common;
+using IGBZ.Domain.Catalog;
+using IGBZ.Domain.Ordering;
+using IGBZ.Domain.Pricing;
+using IGBZ.Domain.Tenancy;
+using IGBZ.Domain.Instagram;
+using IGBZ.Domain.Lms;
 using MongoDB.Bson;
 using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
@@ -54,6 +60,192 @@ public static class BsonConfiguration
                 new NullableSerializer<decimal>(new DecimalSerializer(BsonType.Decimal128)));
 
             BsonSerializer.RegisterSerializer(typeof(Money), new MoneySerializer());
+
+            BsonClassMap.RegisterClassMap<Product>(cm =>
+            {
+                cm.MapConstructor(typeof(Product).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(ProductKind),
+                    typeof(bool),
+                    typeof(IEnumerable<ProductVariant>),
+                    typeof(IEnumerable<string>),
+                    typeof(string),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?)
+                ])!);
+                cm.MapIdProperty(p => p.Id);
+                cm.MapProperty(p => p.TenantId);
+                cm.MapProperty(p => p.Name);
+                cm.MapProperty(p => p.Slug);
+                cm.MapProperty(p => p.Kind);
+                cm.MapProperty(p => p.IsPublished);
+                cm.MapProperty(p => p.CategoryIds);
+                cm.MapProperty(p => p.Variants);
+                cm.MapProperty(p => p.TaxpayerGoodsCode);
+                cm.MapProperty(p => p.CreatedAtUtc);
+                cm.MapProperty(p => p.UpdatedAtUtc);
+            });
+
+            BsonClassMap.RegisterClassMap<Order>(cm =>
+            {
+                cm.MapConstructor(typeof(Order).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(OrderStatus),
+                    typeof(OrderTotals),
+                    typeof(IEnumerable<OrderLine>),
+                    typeof(IEnumerable<OrderStatusChange>),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?)
+                ])!);
+                cm.MapIdProperty(p => p.Id);
+                cm.MapProperty(p => p.TenantId);
+                cm.MapProperty(p => p.OrderNumber);
+                cm.MapProperty(p => p.CustomerId);
+                cm.MapProperty(p => p.Currency);
+                cm.MapProperty(p => p.Status);
+                cm.MapProperty(p => p.Totals);
+                cm.MapProperty(p => p.Lines);
+                cm.MapProperty(p => p.History);
+                cm.MapProperty(p => p.PaymentTransactionId);
+                cm.MapProperty(p => p.CancellationReason);
+                cm.MapProperty(p => p.TrackingCode);
+                cm.MapProperty(p => p.TaxpayerInvoiceId);
+                cm.MapProperty(p => p.CreatedAtUtc);
+                cm.MapProperty(p => p.UpdatedAtUtc);
+            });
+
+            BsonClassMap.RegisterClassMap<Discount>(cm =>
+            {
+                cm.MapConstructor(typeof(Discount).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(DiscountType),
+                    typeof(decimal),
+                    typeof(string),
+                    typeof(Money),
+                    typeof(Money),
+                    typeof(DateTimeOffset?),
+                    typeof(DateTimeOffset?),
+                    typeof(int?),
+                    typeof(int),
+                    typeof(int),
+                    typeof(bool),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?)
+                ])!);
+                cm.MapIdProperty(p => p.Id);
+                cm.MapProperty(p => p.TenantId);
+                cm.MapProperty(p => p.Name);
+                cm.MapProperty(p => p.Type);
+                cm.MapProperty(p => p.Value);
+                cm.MapProperty(p => p.CouponCode);
+                cm.MapProperty(p => p.MinimumOrderSubTotal);
+                cm.MapProperty(p => p.MaximumDiscountAmount);
+                cm.MapProperty(p => p.StartsAtUtc);
+                cm.MapProperty(p => p.EndsAtUtc);
+                cm.MapProperty(p => p.UsageLimit);
+                cm.MapProperty(p => p.UsageCount);
+                cm.MapProperty(p => p.Priority);
+                cm.MapProperty(p => p.IsActive);
+                cm.MapProperty(p => p.CreatedAtUtc);
+                cm.MapProperty(p => p.UpdatedAtUtc);
+            });
+
+            BsonClassMap.RegisterClassMap<Tenant>(cm =>
+            {
+                cm.MapConstructor(typeof(Tenant).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(TenantStatus),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?),
+                    typeof(decimal)
+                ])!);
+                cm.MapIdProperty(t => t.Id);
+                cm.MapProperty(t => t.StoreName);
+                cm.MapProperty(t => t.Subdomain);
+                cm.MapProperty(t => t.CustomDomain);
+                cm.MapProperty(t => t.PlanId);
+                cm.MapProperty(t => t.Status);
+                cm.MapProperty(t => t.CreatedAtUtc);
+                cm.MapProperty(t => t.ActivatedAtUtc);
+                cm.MapProperty(t => t.VatRatePercent);
+            });
+
+            BsonClassMap.RegisterClassMap<InstagramCampaign>(cm =>
+            {
+                cm.MapConstructor(typeof(InstagramCampaign).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(CampaignKind),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(bool),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?)
+                ])!);
+                cm.MapIdProperty(c => c.Id);
+                cm.MapProperty(c => c.TenantId);
+                cm.MapProperty(c => c.Title);
+                cm.MapProperty(c => c.Kind);
+                cm.MapProperty(c => c.Keyword);
+                cm.MapProperty(c => c.ResponseTemplate);
+                cm.MapProperty(c => c.CouponCodeToAttach);
+                cm.MapProperty(c => c.IsActive);
+                cm.MapProperty(c => c.CreatedAtUtc);
+                cm.MapProperty(c => c.UpdatedAtUtc);
+            });
+
+            BsonClassMap.RegisterClassMap<Course>(cm =>
+            {
+                cm.MapConstructor(typeof(Course).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(IEnumerable<CourseLesson>),
+                    typeof(DateTimeOffset),
+                    typeof(DateTimeOffset?)
+                ])!);
+                cm.MapIdProperty(c => c.Id);
+                cm.MapProperty(c => c.TenantId);
+                cm.MapProperty(c => c.ProductId);
+                cm.MapProperty(c => c.Title);
+                cm.MapProperty(c => c.Lessons);
+                cm.MapProperty(c => c.CreatedAtUtc);
+                cm.MapProperty(c => c.UpdatedAtUtc);
+            });
+
+            BsonClassMap.RegisterClassMap<CourseLesson>(cm =>
+            {
+                cm.MapConstructor(typeof(CourseLesson).GetConstructor([
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(int)
+                ])!);
+                cm.MapProperty(l => l.Id);
+                cm.MapProperty(l => l.Title);
+                cm.MapProperty(l => l.VideoHlsUrl);
+                cm.MapProperty(l => l.DurationMinutes);
+            });
 
             _registered = true;
         }

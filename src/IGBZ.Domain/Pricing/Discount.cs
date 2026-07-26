@@ -64,6 +64,42 @@ public sealed class Discount : TenantEntity
         Priority = priority;
     }
 
+    /// <summary>سازنده بازسازی برای استفاده زیرساخت ذخیره‌سازی.</summary>
+    public Discount(
+        string id,
+        string tenantId,
+        string name,
+        DiscountType type,
+        decimal value,
+        string? couponCode,
+        Money? minimumOrderSubTotal,
+        Money? maximumDiscountAmount,
+        DateTimeOffset? startsAtUtc,
+        DateTimeOffset? endsAtUtc,
+        int? usageLimit,
+        int usageCount,
+        int priority,
+        bool isActive,
+        DateTimeOffset createdAtUtc,
+        DateTimeOffset? updatedAtUtc)
+        : base(id, new TenantId(tenantId))
+    {
+        Name = name;
+        Type = type;
+        Value = value;
+        CouponCode = couponCode;
+        MinimumOrderSubTotal = minimumOrderSubTotal;
+        MaximumDiscountAmount = maximumDiscountAmount;
+        StartsAtUtc = startsAtUtc;
+        EndsAtUtc = endsAtUtc;
+        UsageLimit = usageLimit;
+        UsageCount = usageCount;
+        Priority = priority;
+        IsActive = isActive;
+        CreatedAtUtc = createdAtUtc;
+        UpdatedAtUtc = updatedAtUtc;
+    }
+
     public string Name { get; private set; }
 
     public DiscountType Type { get; private set; }

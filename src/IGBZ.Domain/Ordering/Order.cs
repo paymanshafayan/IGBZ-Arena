@@ -46,6 +46,40 @@ public sealed class Order : TenantEntity
         _history.Add(new OrderStatusChange(null, OrderStatus.Pending, DateTimeOffset.UtcNow, "created"));
     }
 
+    /// <summary>سازنده بازسازی برای استفاده زیرساخت ذخیره‌سازی.</summary>
+    public Order(
+        string id,
+        string tenantId,
+        string orderNumber,
+        string customerId,
+        string currency,
+        OrderStatus status,
+        OrderTotals totals,
+        IEnumerable<OrderLine> lines,
+        IEnumerable<OrderStatusChange> history,
+        string? paymentTransactionId,
+        string? cancellationReason,
+        string? trackingCode,
+        string? taxpayerInvoiceId,
+        DateTimeOffset createdAtUtc,
+        DateTimeOffset? updatedAtUtc)
+        : base(id, new TenantId(tenantId))
+    {
+        OrderNumber = orderNumber;
+        CustomerId = customerId;
+        Currency = currency;
+        Status = status;
+        Totals = totals;
+        _lines = [.. lines];
+        _history = [.. history];
+        PaymentTransactionId = paymentTransactionId;
+        CancellationReason = cancellationReason;
+        TrackingCode = trackingCode;
+        TaxpayerInvoiceId = taxpayerInvoiceId;
+        CreatedAtUtc = createdAtUtc;
+        UpdatedAtUtc = updatedAtUtc;
+    }
+
     public string OrderNumber { get; private set; }
 
     public string CustomerId { get; private set; }

@@ -55,6 +55,32 @@ public sealed class Product : TenantEntity
         CategoryIds = categoryIds?.ToList() ?? [];
     }
 
+    /// <summary>سازنده بازسازی برای استفاده زیرساخت ذخیره‌سازی.</summary>
+    public Product(
+        string id,
+        string tenantId,
+        string name,
+        string slug,
+        ProductKind kind,
+        bool isPublished,
+        IEnumerable<ProductVariant> variants,
+        IEnumerable<string> categoryIds,
+        string? taxpayerGoodsCode,
+        DateTimeOffset createdAtUtc,
+        DateTimeOffset? updatedAtUtc)
+        : base(id, new TenantId(tenantId))
+    {
+        Name = name;
+        Slug = slug;
+        Kind = kind;
+        IsPublished = isPublished;
+        _variants = [.. variants];
+        CategoryIds = categoryIds?.ToList() ?? [];
+        TaxpayerGoodsCode = taxpayerGoodsCode;
+        CreatedAtUtc = createdAtUtc;
+        UpdatedAtUtc = updatedAtUtc;
+    }
+
     public string Name { get; private set; }
 
     public string Slug { get; private set; }

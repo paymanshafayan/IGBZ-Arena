@@ -2,6 +2,9 @@ using IGBZ.Api.Middleware;
 using IGBZ.Application.Abstractions;
 using IGBZ.Application.Pricing;
 using IGBZ.Infrastructure.Mongo;
+using IGBZ.Infrastructure.Security;
+using IGBZ.Infrastructure.Tenancy;
+using IGBZ.Infrastructure.Payment;
 using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +27,14 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IMongoClient>().GetDat
 builder.Services.AddScoped<IInventoryService>(sp => new MongoInventoryService(
     sp.GetRequiredService<IMongoDatabase>(),
     sp.GetRequiredService<ITenantContext>()));
+builder.Services.AddScoped<ICheckoutService>(sp => new MongoCheckoutService(
+    sp.GetRequiredService<IMongoDatabase>(),
+    sp.GetRequiredService<ITenantContext>()));
+
+// ---- پیاده‌سازی سرویس‌های فازهای ۲ الی ۱۲ (بخش‌های ثبت‌نام، تامین مستأجر، درگاه پرداخت) ----
+builder.Services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
+builder.Services.AddSingleton<IOtpService, InMemoryOtpService>();
+builder.Services.AddSingleton<IPaymentGatewayService, SandboxPaymentGateway>();
 
 // ---- پایپ‌لاین قیمت‌گذاری (بخش ۵.۲) ----
 builder.Services.AddSingleton<ISubTotalCalculator, SubTotalCalculator>();
@@ -63,7 +74,36 @@ app.MapGet("/api/v1/whoami", (ITenantContext tenant) => Results.Ok(new
     isPlatform = tenant.Current.IsPlatform,
 }));
 
+// ---- اندپوینت‌های فاز ۲ (Onboarding & Provisioning) ----
+app.MapPost("/api/v1/onboarding/otp/request", async (OtpRequest req, IOtpService otpService) =>
+{
+    var code = await otpService.GenerateOtpAsync(req.PhoneNumber);
+    return Results.Ok(new { message = "OTP sent successfully.", code });
+});
+
+app.MapPost("/api/v1/onboarding/verify", async (ProvisionRequest req, IOtpService otpService, ITenantProvisioningService provisioningService) =>
+{
+    var verified = await otpService.VerifyOtpAsync(req.PhoneNumber, req.Code);
+    if (!verified)
+    {
+        return Results.BadRequest(new { error = "Invalid or expired OTP." });
+    }
+
+    var tenant = await provisioningService.ProvisionTenantAsync(req.StoreName, req.Subdomain, req.PhoneNumber);
+    return Results.Ok(new
+    {
+        message = "Tenant successfully provisioned.",
+        tenantId = tenant.Id,
+        storeName = tenant.StoreName,
+        subdomain = tenant.Subdomain,
+        status = tenant.Status.ToString()
+    });
+});
+
 await app.RunAsync().ConfigureAwait(false);
+
+public record OtpRequest(string PhoneNumber);
+public record ProvisionRequest(string PhoneNumber, string Code, string StoreName, string Subdomain);
 
 /// <summary>نقطهٔ ورود، برای دسترسی تست‌های یکپارچه.</summary>
 public partial class Program;

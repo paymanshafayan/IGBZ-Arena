@@ -26,6 +26,29 @@ public sealed class Tenant
         PlanId = planId;
     }
 
+    /// <summary>سازنده بازسازی برای لایه ذخیره‌سازی.</summary>
+    public Tenant(
+        string id,
+        string storeName,
+        string subdomain,
+        string? customDomain,
+        string planId,
+        TenantStatus status,
+        DateTimeOffset createdAtUtc,
+        DateTimeOffset? activatedAtUtc,
+        decimal vatRatePercent)
+    {
+        Id = id;
+        StoreName = storeName;
+        Subdomain = subdomain;
+        CustomDomain = customDomain;
+        PlanId = planId;
+        Status = status;
+        CreatedAtUtc = createdAtUtc;
+        ActivatedAtUtc = activatedAtUtc;
+        VatRatePercent = vatRatePercent;
+    }
+
     public string Id { get; private set; }
 
     public string StoreName { get; private set; }
