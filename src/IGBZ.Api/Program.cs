@@ -503,6 +503,43 @@ app.MapGet("/api/v1/storefront/orders/{id}/download/{productId}", async (
     });
 });
 
+app.MapGet("/api/v1/storefront/orders/customer/{customerId}", async (
+    string customerId,
+    ITenantScopedRepository<Order> orderRepo) =>
+{
+    var orders = await orderRepo.FindAsync(o => o.CustomerId == customerId);
+    return Results.Ok(orders.OrderByDescending(o => o.CreatedAtUtc).Select(o => new
+    {
+        o.Id,
+        o.OrderNumber,
+        o.Status,
+        o.Currency,
+        totals = new
+        {
+            subTotal = o.Totals.SubTotal.Amount,
+            discountTotal = o.Totals.DiscountTotal.Amount,
+            grandTotal = o.Totals.GrandTotal.Amount
+        },
+        lines = o.Lines.Select(l => new
+        {
+            l.ProductId,
+            l.VariantId,
+            l.ProductName,
+            l.VariantName,
+            l.UnitPrice.Amount,
+            l.Quantity
+        }),
+        history = o.History.Select(h => new
+        {
+            h.From,
+            h.To,
+            h.AtUtc,
+            h.Note
+        }),
+        o.CreatedAtUtc
+    }));
+});
+
 // ---- اندپوینت‌های فاز ۴ (Admin API) ----
 app.MapPost("/api/v1/admin/products", async (
     AdminCreateProductRequest req,
