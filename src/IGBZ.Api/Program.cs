@@ -540,6 +540,44 @@ app.MapGet("/api/v1/storefront/orders/customer/{customerId}", async (
     }));
 });
 
+app.MapGet("/api/v1/storefront/downloads/verify", (
+    string token,
+    long expires,
+    string productId,
+    string? customerPhone) =>
+{
+    var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    if (nowUnix > expires)
+    {
+        return Results.BadRequest(new { error = "Download link has expired." });
+    }
+
+    if (string.IsNullOrWhiteSpace(token) || !token.StartsWith("sig_", StringComparison.Ordinal))
+    {
+        return Results.BadRequest(new { error = "Invalid download signature token." });
+    }
+
+    var watermarkText = string.IsNullOrWhiteSpace(customerPhone) ? "CONFIDENTIAL-IGBZ" : customerPhone;
+
+    return Results.Ok(new
+    {
+        status = "Authorized",
+        productId = productId,
+        videoStreamUrl = $"https://stream.igbz.ir/hls/{productId}/index.m3u8",
+        security = new
+        {
+            preventScreenshot = true,
+            watermark = new
+            {
+                text = watermarkText,
+                opacity = 0.4,
+                color = "#FF0000",
+                position = "random"
+            }
+        }
+    });
+});
+
 // ---- اندپوینت‌های فاز ۴ (Admin API) ----
 app.MapPost("/api/v1/admin/products", async (
     AdminCreateProductRequest req,
