@@ -255,6 +255,83 @@ app.MapPost("/api/v1/storefront/checkout", async (
     });
 });
 
+// ---- اندپوینت‌های فاز ۴ (Admin API) ----
+app.MapPost("/api/v1/admin/products", async (
+    AdminCreateProductRequest req,
+    ITenantScopedRepository<Product> productRepo,
+    ITenantContext tenantContext) =>
+{
+    var variants = req.Variants.Select(v => new ProductVariant(
+        v.Id,
+        v.Sku,
+        new Money(v.Price),
+        v.StockOnHand,
+        v.Attributes,
+        v.TrackInventory)).ToList();
+
+    var productId = $"prod_{Guid.NewGuid():N}";
+    var tenantId = new TenantId(tenantContext.Current.Value);
+
+    var product = new Product(productId, tenantId, req.Name, req.Slug, req.Kind, variants, req.CategoryIds);
+    await productRepo.InsertAsync(product);
+
+    return Results.Ok(new { message = "Product created successfully.", productId = product.Id });
+});
+
+app.MapPost("/api/v1/admin/products/{id}/publish", async (string id, ITenantScopedRepository<Product> productRepo) =>
+{
+    var product = await productRepo.GetByIdAsync(id);
+    if (product is null) return Results.NotFound();
+
+    product.Publish();
+    await productRepo.ReplaceAsync(product);
+    return Results.Ok(new { message = "Product published successfully." });
+});
+
+app.MapPost("/api/v1/admin/products/{id}/unpublish", async (string id, ITenantScopedRepository<Product> productRepo) =>
+{
+    var product = await productRepo.GetByIdAsync(id);
+    if (product is null) return Results.NotFound();
+
+    product.Unpublish();
+    await productRepo.ReplaceAsync(product);
+    return Results.Ok(new { message = "Product unpublished successfully." });
+});
+
+app.MapGet("/api/v1/admin/orders", async (ITenantScopedRepository<Order> orderRepo) =>
+{
+    var orders = await orderRepo.ListAsync();
+    return Results.Ok(orders.Select(o => new
+    {
+        o.Id,
+        o.OrderNumber,
+        o.CustomerId,
+        o.Status,
+        grandTotal = o.Totals.GrandTotal.Amount,
+        o.CreatedAtUtc
+    }));
+});
+
+app.MapPost("/api/v1/admin/orders/{id}/ship", async (string id, AdminShipOrderRequest req, ITenantScopedRepository<Order> orderRepo) =>
+{
+    var order = await orderRepo.GetByIdAsync(id);
+    if (order is null) return Results.NotFound();
+
+    order.MarkAsShipped(req.TrackingCode);
+    await orderRepo.ReplaceAsync(order);
+    return Results.Ok(new { message = "Order marked as shipped." });
+});
+
+app.MapPost("/api/v1/admin/orders/{id}/cancel", async (string id, AdminCancelOrderRequest req, ITenantScopedRepository<Order> orderRepo) =>
+{
+    var order = await orderRepo.GetByIdAsync(id);
+    if (order is null) return Results.NotFound();
+
+    order.Cancel(req.Reason);
+    await orderRepo.ReplaceAsync(order);
+    return Results.Ok(new { message = "Order cancelled successfully." });
+});
+
 await app.RunAsync().ConfigureAwait(false);
 
 public record OtpRequest(string PhoneNumber);
@@ -267,6 +344,24 @@ public record StorefrontCheckoutRequest(
     string? CouponCode,
     decimal ShippingCost,
     string ShippingMethodCode);
+
+public record AdminCreateProductVariantRequest(
+    string Id,
+    string Sku,
+    decimal Price,
+    int StockOnHand,
+    Dictionary<string, string>? Attributes,
+    bool TrackInventory = true);
+
+public record AdminCreateProductRequest(
+    string Name,
+    string Slug,
+    ProductKind Kind,
+    List<AdminCreateProductVariantRequest> Variants,
+    List<string>? CategoryIds);
+
+public record AdminShipOrderRequest(string TrackingCode);
+public record AdminCancelOrderRequest(string Reason);
 
 /// <summary>نقطهٔ ورود، برای دسترسی تست‌های یکپارچه.</summary>
 public partial class Program;
