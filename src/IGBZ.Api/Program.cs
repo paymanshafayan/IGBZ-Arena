@@ -138,29 +138,90 @@ app.MapGet("/api/v1/whoami", (ITenantContext tenant) => Results.Ok(new
     isPlatform = tenant.Current.IsPlatform,
 }));
 
-// ---- اندپوینت‌های فاز ۲ (Onboarding & Provisioning) ----
-app.MapPost("/api/v1/onboarding/otp/request", async (OtpRequest req, IOtpService otpService) =>
+// ---- اندپوینت‌های فاز ۲ پیشرفته (Onboarding Wizard & Subscription Payment Gateway) ----
+app.MapPost("/api/v1/platform/onboarding/start", async (
+    PlatformOnboardingStartRequest req,
+    IOtpService otpService,
+    ISmsService smsService,
+    IMongoDatabase database) =>
 {
+    var tenantsCollection = database.GetCollection<Tenant>(MongoCollections.PlatformTenants);
+    var exists = await tenantsCollection.Find(t => t.Subdomain == req.Subdomain.Trim().ToLowerInvariant())
+        .AnyAsync();
+
+    if (exists)
+    {
+        return Results.BadRequest(new { error = "Subdomain is already taken." });
+    }
+
     var code = await otpService.GenerateOtpAsync(req.PhoneNumber);
-    return Results.Ok(new { message = "OTP sent successfully.", code });
+    await smsService.SendOtpSmsAsync(req.PhoneNumber, code);
+
+    OnboardingSessionStore.Sessions[req.PhoneNumber] = req;
+
+    return Results.Ok(new { message = "OTP code generated and sent via SMS.", code });
 });
 
-app.MapPost("/api/v1/onboarding/verify", async (ProvisionRequest req, IOtpService otpService, ITenantProvisioningService provisioningService) =>
+app.MapPost("/api/v1/platform/onboarding/pay", async (
+    PlatformOnboardingPayRequest req,
+    IOtpService otpService,
+    IPaymentGatewayService paymentGateway) =>
 {
     var verified = await otpService.VerifyOtpAsync(req.PhoneNumber, req.Code);
     if (!verified)
     {
-        return Results.BadRequest(new { error = "Invalid or expired OTP." });
+        return Results.BadRequest(new { error = "Invalid or expired OTP code." });
     }
 
-    var tenant = await provisioningService.ProvisionTenantAsync(req.StoreName, req.Subdomain, req.PhoneNumber);
+    var planAmount = new Money(5000000m, "IRR");
+    var callbackUrl = $"https://api.igbz.local/api/v1/platform/onboarding/callback?phone={req.PhoneNumber}";
+
+    var paymentResult = await paymentGateway.StartPaymentAsync(req.Subdomain, planAmount, callbackUrl);
+    if (!paymentResult.Succeeded)
+    {
+        return Results.BadRequest(new { error = paymentResult.ErrorMessage });
+    }
+
     return Results.Ok(new
     {
-        message = "Tenant successfully provisioned.",
+        message = "OTP verified. Redirecting to payment gateway...",
+        redirectUrl = paymentResult.RedirectUrl
+    });
+});
+
+app.MapGet("/api/v1/platform/onboarding/callback", async (
+    string phone,
+    string authority,
+    IPaymentGatewayService paymentGateway,
+    ITenantProvisioningService provisioningService,
+    ISmsService smsService) =>
+{
+    if (!OnboardingSessionStore.Sessions.TryGetValue(phone, out var session))
+    {
+        return Results.BadRequest(new { error = "Onboarding session not found." });
+    }
+
+    var planAmount = new Money(5000000m, "IRR");
+    var verification = await paymentGateway.VerifyPaymentAsync(session.Subdomain, planAmount, authority);
+
+    if (!verification.Succeeded)
+    {
+        return Results.BadRequest(new { error = $"Payment verification failed: {verification.ErrorMessage}" });
+    }
+
+    var tenant = await provisioningService.ProvisionTenantAsync(session.StoreName, session.Subdomain, phone);
+
+    await smsService.SendSmsAsync(phone, $"سلام! فروشگاه شما با نام '{tenant.StoreName}' و آدرس https://{tenant.Subdomain}.igbz.ir با موفقیت فعال شد.");
+
+    OnboardingSessionStore.Sessions.TryRemove(phone, out _);
+
+    return Results.Ok(new
+    {
+        message = "Payment successful. Store has been provisioned and activated!",
         tenantId = tenant.Id,
         storeName = tenant.StoreName,
         subdomain = tenant.Subdomain,
-        status = tenant.Status.ToString()
+        transactionId = verification.TransactionId
     });
 });
 
@@ -670,6 +731,14 @@ await app.RunAsync().ConfigureAwait(false);
 
 public record OtpRequest(string PhoneNumber);
 public record ProvisionRequest(string PhoneNumber, string Code, string StoreName, string Subdomain);
+
+public record PlatformOnboardingStartRequest(string PhoneNumber, string StoreName, string Subdomain, string PlanId);
+public record PlatformOnboardingPayRequest(string PhoneNumber, string Code, string StoreName, string Subdomain, string PlanId);
+
+public static class OnboardingSessionStore
+{
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, PlatformOnboardingStartRequest> Sessions = new();
+}
 
 public record StorefrontCheckoutLine(string ProductId, string VariantId, int Quantity);
 public record StorefrontCheckoutRequest(
